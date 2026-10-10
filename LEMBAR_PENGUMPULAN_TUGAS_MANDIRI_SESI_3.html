@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lembar Pengumpulan Tugas Mandiri Sesi 3 - Rossa Livia</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      color: #0f172a;
+      max-width: 800px;
+      margin: 2rem auto;
+      padding: 0 1.5rem;
+    }
+    h1 { font-size: 1.5rem; color: #1e3a8a; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.5rem; }
+    h2 { font-size: 1.2rem; color: #0f172a; margin-top: 1.5rem; }
+    .badge { background: #eff6ff; color: #1d4ed8; padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: 700; }
+    .info-card { background: #f8fafc; border: 1px solid #e2e8f0; padding: 1rem 1.25rem; border-radius: 8px; margin: 1rem 0; }
+    .info-card p { margin: 0.35rem 0; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem; }
+    th, td { border: 1px solid #cbd5e1; padding: 0.6rem 0.75rem; text-align: left; }
+    th { background: #f1f5f9; }
+    .status-pass { color: #16a34a; font-weight: bold; }
+    pre { background: #0f172a; color: #f8fafc; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.825rem; }
+    .print-btn { background: #1d4ed8; color: white; border: none; padding: 0.6rem 1.2rem; border-radius: 6px; cursor: pointer; font-weight: bold; }
+    @media print {
+      .no-print { display: none; }
+      body { margin: 0; padding: 0; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="no-print" style="text-align: right; margin-bottom: 1rem;">
+    <button class="print-btn" onclick="window.print()">🖨️ Cetak / Simpan sebagai PDF</button>
+  </div>
+
+  <h1>LEMBAR PENGUMPULAN TUGAS MANDIRI SESI 3</h1>
+  <p><strong>Bootcamp Web Programming with AI by Plan Indonesia</strong></p>
+
+  <div class="info-card">
+    <p><strong>Nama Peserta:</strong> Rossa Livia</p>
+    <p><strong>Email:</strong> rossalivia111@gmail.com</p>
+    <p><strong>Tanggal Pengerjaan:</strong> 8 Oktober 2026</p>
+    <p><strong>Pilihan Aplikasi:</strong> Cuci Kilat (Laundry Kiloan)</p>
+    <p><strong>URL Publik Netlify:</strong> <a href="https://cuci-kilat-app.netlify.app" target="_blank">https://cuci-kilat-app.netlify.app</a></p>
+    <p><strong>URL Repositori GitHub:</strong> <a href="https://github.com/rossalivia/cuci-kilat-app" target="_blank">https://github.com/rossalivia/cuci-kilat-app</a></p>
+  </div>
+
+  <h2>1. Lembar Uji Mandiri: 6 Masukan Tidak Sah</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 50px;">No</th>
+        <th>Skenario Pengujian</th>
+        <th>Masukan yang Diuji</th>
+        <th>Hasil Pengujian di UI & Firestore Rules</th>
+        <th style="width: 80px; text-align: center;">Hasil</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="text-align: center;">1</td>
+        <td><strong>Field Kosong</strong></td>
+        <td>Nama layanan dikosongkan</td>
+        <td>Ditolak formulir &amp; rules dengan pesan <em>"Nama layanan wajib diisi"</em>.</td>
+        <td style="text-align: center;" class="status-pass">LULUS</td>
+      </tr>
+      <tr>
+        <td style="text-align: center;">2</td>
+        <td><strong>Tipe Salah</strong></td>
+        <td>No WhatsApp diisi huruf: <code>0812abcd34</code></td>
+        <td>Ditolak formulir dengan pesan <em>"Nomor WhatsApp hanya boleh berisi angka"</em>.</td>
+        <td style="text-align: center;" class="status-pass">LULUS</td>
+      </tr>
+      <tr>
+        <td style="text-align: center;">3</td>
+        <td><strong>Teks Terlalu Panjang</strong></td>
+        <td>Nama layanan &gt; 40 karakter</td>
+        <td>Ditolak oleh validasi formulir dan batasan rules.</td>
+        <td style="text-align: center;" class="status-pass">LULUS</td>
+      </tr>
+      <tr>
+        <td style="text-align: center;">4</td>
+        <td><strong>Nilai Negatif</strong></td>
+        <td>Harga layanan diisi <code>-5000</code></td>
+        <td>Ditolak dengan pesan <em>"Harga per kg harus angka bulat minimal 0"</em>.</td>
+        <td style="text-align: center;" class="status-pass">LULUS</td>
+      </tr>
+      <tr>
+        <td style="text-align: center;">5</td>
+        <td><strong>Nilai di Luar Batas</strong></td>
+        <td>Berat cucian diisi <code>55 kg</code></td>
+        <td>Ditolak dengan pesan <em>"Berat cucian maksimal 50 kg"</em>.</td>
+        <td style="text-align: center;" class="status-pass">LULUS</td>
+      </tr>
+      <tr>
+        <td style="text-align: center;">6</td>
+        <td><strong>Perubahan Status Ilegal</strong></td>
+        <td>Mengubah status <code>diterima</code> langsung ke <code>diambil</code></td>
+        <td>Ditolak alur transisi dan <code>firestore.rules</code>.</td>
+        <td style="text-align: center;" class="status-pass">LULUS</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>2. Verifikasi Kriteria Penilaian</h2>
+  <ul>
+    <li>✅ <strong>CRUD 3 Koleksi</strong>: Berjalan lancar pada koleksi <code>layanan</code>, <code>pelanggan</code>, dan <code>order</code>.</li>
+    <li>✅ <strong>Nama Field &amp; Koleksi</strong>: Sesuai 100% dengan dokumen skema.</li>
+    <li>✅ <strong>Kalkulasi Tagihan</strong>: Otomatis dihitung <code>tarif × berat</code> dengan pembulatan timbangan ke atas.</li>
+    <li>✅ <strong>Alur Status Cucian</strong>: Satu arah (diterima &rarr; dicuci &rarr; selesai &rarr; diambil).</li>
+    <li>✅ <strong>Tiga State</strong>: <em>Loading</em> (skeleton), <em>Empty</em> (dengan CTA tambah), dan <em>Error</em> (dengan tombol Coba Lagi) aktif di semua modul.</li>
+    <li>✅ <strong>Konfirmasi Hapus</strong>: Selalu menampilkan dialog konfirmasi dan order berstatus aktif dilarang dihapus.</li>
+    <li>✅ <strong>Security Rules</strong>: Terpasang di Firebase dan menolak data tidak sah.</li>
+  </ul>
+
+</body>
+</html>

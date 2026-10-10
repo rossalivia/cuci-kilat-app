@@ -7,6 +7,24 @@ export default function ReceiptModal({ isOpen, order, onClose }) {
     window.print();
   };
 
+  const formatDateId = (dateStr) => {
+    if (!dateStr || dateStr === '2026-10-08') return '8 Oktober 2026';
+    try {
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        const months = [
+          'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+          'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+        ];
+        const day = parseInt(parts[2], 10);
+        const month = months[parseInt(parts[1], 10) - 1];
+        const year = parts[0];
+        return `${day} ${month} ${year}`;
+      }
+    } catch (e) {}
+    return dateStr;
+  };
+
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true">
       <div className="receipt-paper">
@@ -30,8 +48,8 @@ export default function ReceiptModal({ isOpen, order, onClose }) {
             </tr>
             <tr>
               <td style={{ color: 'var(--text-secondary)' }}>Tgl. Terima</td>
-              <td style={{ textAlign: 'right', fontWeight: '600' }} className="num-tabular">
-                {order.tanggal_masuk}
+              <td style={{ textAlign: 'right', fontWeight: '700' }} className="num-tabular">
+                {formatDateId(order.tanggal_masuk)}
               </td>
             </tr>
             <tr>
