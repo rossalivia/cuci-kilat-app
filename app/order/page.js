@@ -6,6 +6,19 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import Toast from '../../components/Toast';
 import { initialOrder, initialLayanan, initialPelanggan, getTodayDateString } from '../../lib/mockData';
 import { calculateOrder, canTransitionStatus, canDeleteOrder } from '../../lib/businessRules';
+import { db, isFirebaseConfigured } from '../../lib/firebase';
+import {
+  collection,
+  doc,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  orderBy,
+  limit,
+  serverTimestamp
+} from 'firebase/firestore';
 
 export default function OrderPage() {
   const [orderList, setOrderList] = useState([]);
@@ -25,26 +38,41 @@ export default function OrderPage() {
 
   // Dialog & Toast state
   const [deleteDialog, setDeleteDialog] = useState({ isOpen: false, item: null });
-  const [statusDialog, setStatusDialog] = useState({ isOpen: false, item: null, targetStatus: '' });
   const [toast, setToast] = useState(null);
 
-  const loadData = () => {
+  const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const savedOrders = localStorage.getItem('cuci_kilat_order');
-      const savedLayanan = localStorage.getItem('cuci_kilat_layanan');
-      const savedPelanggan = localStorage.getItem('cuci_kilat_pelanggan');
+      if (isFirebaseConfigured() && db) {
+        // Ambil order terbaru dengan limit(20)
+        const orderQ = query(collection(db, 'order'), orderBy('dibuat_pada', 'desc'), limit(20));
+        const orderSnap = await getDocs(orderQ);
+        const orders = orderSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-      setOrderList(savedOrders ? JSON.parse(savedOrders) : initialOrder);
-      setLayananList(savedLayanan ? JSON.parse(savedLayanan) : initialLayanan);
-      setPelangganList(savedPelanggan ? JSON.parse(savedPelanggan) : initialPelanggan);
+        // Ambil master layanan & pelanggan untuk form dropdown
+        const laySnap = await getDocs(query(collection(db, 'layanan'), orderBy('nama'), limit(20)));
+        const layList = laySnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-      if (!savedOrders) localStorage.setItem('cuci_kilat_order', JSON.stringify(initialOrder));
-      if (!savedLayanan) localStorage.setItem('cuci_kilat_layanan', JSON.stringify(initialLayanan));
-      if (!savedPelanggan) localStorage.setItem('cuci_kilat_pelanggan', JSON.stringify(initialPelanggan));
+        const pelSnap = await getDocs(query(collection(db, 'pelanggan'), orderBy('nama'), limit(20)));
+        const pelList = pelSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+        setOrderList(orders);
+        setLayananList(layList);
+        setPelangganList(pelList);
+      } else {
+        // Mode Fallback
+        const savedOrders = localStorage.getItem('cuci_kilat_order');
+        const savedLayanan = localStorage.getItem('cuci_kilat_layanan');
+        const savedPelanggan = localStorage.getItem('cuci_kilat_pelanggan');
+
+        setOrderList(savedOrders ? JSON.parse(savedOrders) : initialOrder);
+        setLayananList(savedLayanan ? JSON.parse(savedLayanan) : initialLayanan);
+        setPelangganList(savedPelanggan ? JSON.parse(savedPelanggan) : initialPelanggan);
+      }
     } catch (err) {
-      setError('Gagal memuat data order.');
+      console.error('Error fetching order data:', err);
+      setError('Gagal memuat data order cucian dari server.');
     } finally {
       setLoading(false);
     }
@@ -53,11 +81,6 @@ export default function OrderPage() {
   useEffect(() => {
     loadData();
   }, []);
-
-  const saveOrdersToStorage = (newList) => {
-    setOrderList(newList);
-    localStorage.setItem('cuci_kilat_order', JSON.stringify(newList));
-  };
 
   const handleOpenAdd = () => {
     setSelectedPelangganId(pelangganList[0]?.id || '');
@@ -68,11 +91,10 @@ export default function OrderPage() {
     setIsFormOpen(true);
   };
 
-  // Preview layanan terpilih & kalkulasi live
   const selectedLayanan = layananList.find((l) => l.id === selectedLayananId);
   const calcResult = selectedLayanan && inputBerat ? calculateOrder(selectedLayanan.harga_per_kg, inputBerat) : null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError(null);
 
@@ -97,8 +119,7 @@ export default function OrderPage() {
       return;
     }
 
-    const newOrder = {
-      id: 'Od' + Math.random().toString(36).substring(2, 8),
+    const payload = {
       pelanggan_id: pelanggan.no_whatsapp,
       nama_pelanggan: pelanggan.nama,
       layanan_id: selectedLayanan.id,
@@ -108,42 +129,87 @@ export default function OrderPage() {
       total: calc.total,
       status: 'diterima',
       catatan: catatan.trim(),
-      tanggal_masuk: getTodayDateString(),
-      dibuat_pada: new Date().toISOString()
+      tanggal_masuk: getTodayDateString()
     };
 
-    saveOrdersToStorage([newOrder, ...orderList]);
-    setToast({ type: 'success', message: `Order #${newOrder.id} berhasil dicatat!` });
-    setIsFormOpen(false);
+    try {
+      if (isFirebaseConfigured() && db) {
+        const docRef = await addDoc(collection(db, 'order'), {
+          ...payload,
+          dibuat_pada: serverTimestamp()
+        });
+        setToast({ type: 'success', message: `Order #${docRef.id} berhasil dicatat ke Firestore!` });
+        await loadData();
+      } else {
+        const newOrder = {
+          id: 'Od' + Math.random().toString(36).substring(2, 8),
+          ...payload,
+          dibuat_pada: new Date().toISOString()
+        };
+        const updated = [newOrder, ...orderList];
+        setOrderList(updated);
+        localStorage.setItem('cuci_kilat_order', JSON.stringify(updated));
+        setToast({ type: 'success', message: `Order #${newOrder.id} berhasil dicatat!` });
+      }
+      setIsFormOpen(false);
+    } catch (err) {
+      console.error('Error saving order:', err);
+      setFormError('Gagal menyimpan order: ' + err.message);
+    }
   };
 
-  // Ubah status
-  const triggerStatusChange = (order, targetStatus) => {
+  const triggerStatusChange = async (order, targetStatus) => {
     if (!canTransitionStatus(order.status, targetStatus)) {
       setToast({ type: 'error', message: `Status tidak dapat diubah dari "${order.status}" ke "${targetStatus}".` });
       return;
     }
-    const updated = orderList.map((item) =>
-      item.id === order.id ? { ...item, status: targetStatus } : item
-    );
-    saveOrdersToStorage(updated);
-    setToast({ type: 'success', message: `Order #${order.id} kini berstatus "${targetStatus}".` });
+
+    try {
+      if (isFirebaseConfigured() && db) {
+        await updateDoc(doc(db, 'order', order.id), { status: targetStatus });
+        setToast({ type: 'success', message: `Order #${order.id} kini berstatus "${targetStatus}" di Firestore.` });
+        await loadData();
+      } else {
+        const updated = orderList.map((item) =>
+          item.id === order.id ? { ...item, status: targetStatus } : item
+        );
+        setOrderList(updated);
+        localStorage.setItem('cuci_kilat_order', JSON.stringify(updated));
+        setToast({ type: 'success', message: `Order #${order.id} kini berstatus "${targetStatus}".` });
+      }
+    } catch (err) {
+      console.error('Error updating order status:', err);
+      setToast({ type: 'error', message: 'Gagal memperbarui status order: ' + err.message });
+    }
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!deleteDialog.item) return;
     if (!canDeleteOrder(deleteDialog.item.status)) {
       setToast({ type: 'error', message: `Order berstatus "${deleteDialog.item.status}" dilarang dihapus.` });
       setDeleteDialog({ isOpen: false, item: null });
       return;
     }
-    const filtered = orderList.filter((item) => item.id !== deleteDialog.item.id);
-    saveOrdersToStorage(filtered);
-    setToast({ type: 'success', message: `Order #${deleteDialog.item.id} berhasil dihapus.` });
-    setDeleteDialog({ isOpen: false, item: null });
+
+    try {
+      if (isFirebaseConfigured() && db) {
+        await deleteDoc(doc(db, 'order', deleteDialog.item.id));
+        setToast({ type: 'success', message: `Order #${deleteDialog.item.id} berhasil dihapus dari Firestore.` });
+        await loadData();
+      } else {
+        const filtered = orderList.filter((item) => item.id !== deleteDialog.item.id);
+        setOrderList(filtered);
+        localStorage.setItem('cuci_kilat_order', JSON.stringify(filtered));
+        setToast({ type: 'success', message: `Order #${deleteDialog.item.id} berhasil dihapus.` });
+      }
+    } catch (err) {
+      console.error('Error deleting order:', err);
+      setToast({ type: 'error', message: 'Gagal menghapus order: ' + err.message });
+    } finally {
+      setDeleteDialog({ isOpen: false, item: null });
+    }
   };
 
-  // Filter per Tab Status
   const statusTabs = [
     { key: 'semua', label: 'Semua' },
     { key: 'diterima', label: 'Diterima' },
@@ -214,7 +280,7 @@ export default function OrderPage() {
                 {layananList.length === 0 && <option value="">(Belum ada layanan)</option>}
                 {layananList.map((l) => (
                   <option key={l.id} value={l.id}>
-                    {l.nama} - Rp{l.harga_per_kg.toLocaleString('id-ID')}/kg ({l.estimasi_hari} hari)
+                    {l.nama} - Rp{l.harga_per_kg?.toLocaleString('id-ID')}/kg ({l.estimasi_hari} hari)
                   </option>
                 ))}
               </select>
@@ -327,9 +393,9 @@ export default function OrderPage() {
                 </div>
 
                 <div style={{ background: '#f8fafc', padding: '0.5rem 0.65rem', borderRadius: 'var(--radius-sm)', marginBottom: '0.65rem', fontSize: '0.825rem' }}>
-                  <div>🧺 <strong>{item.nama_layanan}</strong> ({item.berat_kg} kg × Rp{item.harga_per_kg.toLocaleString('id-ID')})</div>
+                  <div>🧺 <strong>{item.nama_layanan}</strong> ({item.berat_kg} kg × Rp{item.harga_per_kg?.toLocaleString('id-ID')})</div>
                   <div style={{ marginTop: '0.15rem' }}>
-                    💰 Total Tagihan: <strong style={{ color: 'var(--primary-dark)', fontSize: '0.95rem' }}>Rp{item.total.toLocaleString('id-ID')}</strong>
+                    💰 Total Tagihan: <strong style={{ color: 'var(--primary-dark)', fontSize: '0.95rem' }}>Rp{item.total?.toLocaleString('id-ID')}</strong>
                   </div>
                   {item.catatan && (
                     <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '0.2rem' }}>

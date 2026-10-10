@@ -6,6 +6,20 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import Toast from '../../components/Toast';
 import { initialPelanggan } from '../../lib/mockData';
 import { validatePelanggan } from '../../lib/businessRules';
+import { db, isFirebaseConfigured } from '../../lib/firebase';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  orderBy,
+  limit,
+  serverTimestamp
+} from 'firebase/firestore';
 
 export default function PelangganPage() {
   const [pelangganList, setPelangganList] = useState([]);
@@ -27,19 +41,30 @@ export default function PelangganPage() {
   const [deleteDialog, setDeleteDialog] = useState({ isOpen: false, item: null });
   const [toast, setToast] = useState(null);
 
-  const loadData = () => {
+  const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const saved = localStorage.getItem('cuci_kilat_pelanggan');
-      if (saved) {
-        setPelangganList(JSON.parse(saved));
+      if (isFirebaseConfigured() && db) {
+        const q = query(collection(db, 'pelanggan'), orderBy('nama'), limit(20));
+        const querySnapshot = await getDocs(q);
+        const docs = querySnapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data()
+        }));
+        setPelangganList(docs);
       } else {
-        setPelangganList(initialPelanggan);
-        localStorage.setItem('cuci_kilat_pelanggan', JSON.stringify(initialPelanggan));
+        const saved = localStorage.getItem('cuci_kilat_pelanggan');
+        if (saved) {
+          setPelangganList(JSON.parse(saved));
+        } else {
+          setPelangganList(initialPelanggan);
+          localStorage.setItem('cuci_kilat_pelanggan', JSON.stringify(initialPelanggan));
+        }
       }
     } catch (err) {
-      setError('Gagal memuat data pelanggan.');
+      console.error('Error fetching pelanggan:', err);
+      setError('Gagal memuat data pelanggan dari server.');
     } finally {
       setLoading(false);
     }
@@ -48,11 +73,6 @@ export default function PelangganPage() {
   useEffect(() => {
     loadData();
   }, []);
-
-  const saveToStorage = (newList) => {
-    setPelangganList(newList);
-    localStorage.setItem('cuci_kilat_pelanggan', JSON.stringify(newList));
-  };
 
   const handleOpenAdd = () => {
     setEditingId(null);
@@ -72,7 +92,7 @@ export default function PelangganPage() {
     setIsFormOpen(true);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError(null);
 
@@ -84,43 +104,88 @@ export default function PelangganPage() {
 
     const cleanWa = formData.no_whatsapp.trim();
 
-    // Cek duplikasi nomor WhatsApp pada penambahan baru
-    if (!editingId) {
-      const isDuplicate = pelangganList.some((p) => p.no_whatsapp === cleanWa);
-      if (isDuplicate) {
-        setFormError('Nomor WhatsApp sudah terdaftar.');
-        return;
+    try {
+      if (isFirebaseConfigured() && db) {
+        const docRef = doc(db, 'pelanggan', cleanWa);
+
+        if (!editingId) {
+          // Periksa dokumen dengan getDoc sesuai Skema Bagian 4
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            setFormError('Nomor WhatsApp sudah terdaftar.');
+            return;
+          }
+          await setDoc(docRef, {
+            nama: formData.nama.trim(),
+            no_whatsapp: cleanWa,
+            alamat: formData.alamat.trim(),
+            dibuat_pada: serverTimestamp()
+          });
+          setToast({ type: 'success', message: 'Pelanggan baru berhasil didaftarkan ke Firestore!' });
+        } else {
+          await updateDoc(docRef, {
+            nama: formData.nama.trim(),
+            alamat: formData.alamat.trim()
+          });
+          setToast({ type: 'success', message: 'Data pelanggan berhasil diperbarui di Firestore!' });
+        }
+        await loadData();
+      } else {
+        // Fallback LocalStorage
+        if (!editingId) {
+          const isDuplicate = pelangganList.some((p) => p.no_whatsapp === cleanWa);
+          if (isDuplicate) {
+            setFormError('Nomor WhatsApp sudah terdaftar.');
+            return;
+          }
+          const newPelanggan = {
+            id: cleanWa,
+            no_whatsapp: cleanWa,
+            nama: formData.nama.trim(),
+            alamat: formData.alamat.trim(),
+            dibuat_pada: new Date().toISOString()
+          };
+          const updated = [...pelangganList, newPelanggan];
+          setPelangganList(updated);
+          localStorage.setItem('cuci_kilat_pelanggan', JSON.stringify(updated));
+          setToast({ type: 'success', message: 'Pelanggan baru berhasil ditambahkan!' });
+        } else {
+          const updated = pelangganList.map((item) =>
+            item.id === editingId
+              ? { ...item, nama: formData.nama.trim(), alamat: formData.alamat.trim() }
+              : item
+          );
+          setPelangganList(updated);
+          localStorage.setItem('cuci_kilat_pelanggan', JSON.stringify(updated));
+          setToast({ type: 'success', message: 'Data pelanggan berhasil diperbarui!' });
+        }
       }
+      setIsFormOpen(false);
+    } catch (err) {
+      console.error('Error saving pelanggan:', err);
+      setFormError('Gagal menyimpan pelanggan: ' + err.message);
     }
-
-    const payload = {
-      id: cleanWa,
-      no_whatsapp: cleanWa,
-      nama: formData.nama.trim(),
-      alamat: formData.alamat.trim(),
-      dibuat_pada: new Date().toISOString()
-    };
-
-    if (editingId) {
-      const updated = pelangganList.map((item) =>
-        item.id === editingId ? { ...item, ...payload } : item
-      );
-      saveToStorage(updated);
-      setToast({ type: 'success', message: 'Data pelanggan berhasil diperbarui!' });
-    } else {
-      saveToStorage([...pelangganList, payload]);
-      setToast({ type: 'success', message: 'Pelanggan baru berhasil ditambahkan!' });
-    }
-
-    setIsFormOpen(false);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!deleteDialog.item) return;
-    const filtered = pelangganList.filter((item) => item.id !== deleteDialog.item.id);
-    saveToStorage(filtered);
-    setToast({ type: 'success', message: `Pelanggan "${deleteDialog.item.nama}" berhasil dihapus.` });
-    setDeleteDialog({ isOpen: false, item: null });
+    try {
+      if (isFirebaseConfigured() && db) {
+        await deleteDoc(doc(db, 'pelanggan', deleteDialog.item.no_whatsapp));
+        setToast({ type: 'success', message: `Pelanggan "${deleteDialog.item.nama}" berhasil dihapus.` });
+        await loadData();
+      } else {
+        const filtered = pelangganList.filter((item) => item.id !== deleteDialog.item.id);
+        setPelangganList(filtered);
+        localStorage.setItem('cuci_kilat_pelanggan', JSON.stringify(filtered));
+        setToast({ type: 'success', message: `Pelanggan "${deleteDialog.item.nama}" berhasil dihapus.` });
+      }
+    } catch (err) {
+      console.error('Error deleting pelanggan:', err);
+      setToast({ type: 'error', message: 'Gagal menghapus pelanggan: ' + err.message });
+    } finally {
+      setDeleteDialog({ isOpen: false, item: null });
+    }
   };
 
   // Filter pencarian berdasarkan nama atau nomor WhatsApp
@@ -128,8 +193,8 @@ export default function PelangganPage() {
     const q = searchQuery.toLowerCase().trim();
     if (!q) return true;
     return (
-      p.nama.toLowerCase().includes(q) ||
-      p.no_whatsapp.includes(q)
+      (p.nama && p.nama.toLowerCase().includes(q)) ||
+      (p.no_whatsapp && p.no_whatsapp.includes(q))
     );
   });
 

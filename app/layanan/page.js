@@ -6,6 +6,19 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import Toast from '../../components/Toast';
 import { initialLayanan } from '../../lib/mockData';
 import { validateLayanan } from '../../lib/businessRules';
+import { db, isFirebaseConfigured } from '../../lib/firebase';
+import {
+  collection,
+  doc,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  orderBy,
+  limit,
+  serverTimestamp
+} from 'firebase/firestore';
 
 export default function LayananPage() {
   const [layananList, setLayananList] = useState([]);
@@ -26,20 +39,31 @@ export default function LayananPage() {
   const [deleteDialog, setDeleteDialog] = useState({ isOpen: false, item: null });
   const [toast, setToast] = useState(null);
 
-  // Load initial data
-  const loadData = () => {
+  // Load data (Firestore atau localStorage fallback)
+  const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const saved = localStorage.getItem('cuci_kilat_layanan');
-      if (saved) {
-        setLayananList(JSON.parse(saved));
+      if (isFirebaseConfigured() && db) {
+        const q = query(collection(db, 'layanan'), orderBy('nama'), limit(20));
+        const querySnapshot = await getDocs(q);
+        const docs = querySnapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data()
+        }));
+        setLayananList(docs);
       } else {
-        setLayananList(initialLayanan);
-        localStorage.setItem('cuci_kilat_layanan', JSON.stringify(initialLayanan));
+        const saved = localStorage.getItem('cuci_kilat_layanan');
+        if (saved) {
+          setLayananList(JSON.parse(saved));
+        } else {
+          setLayananList(initialLayanan);
+          localStorage.setItem('cuci_kilat_layanan', JSON.stringify(initialLayanan));
+        }
       }
     } catch (err) {
-      setError('Gagal memuat data layanan.');
+      console.error('Error fetching layanan:', err);
+      setError('Gagal memuat data layanan dari server.');
     } finally {
       setLoading(false);
     }
@@ -48,11 +72,6 @@ export default function LayananPage() {
   useEffect(() => {
     loadData();
   }, []);
-
-  const saveToStorage = (newList) => {
-    setLayananList(newList);
-    localStorage.setItem('cuci_kilat_layanan', JSON.stringify(newList));
-  };
 
   const handleOpenAdd = () => {
     setEditingId(null);
@@ -72,7 +91,7 @@ export default function LayananPage() {
     setIsFormOpen(true);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError(null);
 
@@ -90,34 +109,69 @@ export default function LayananPage() {
     const payload = {
       nama: formData.nama.trim(),
       harga_per_kg: Number(formData.harga_per_kg),
-      estimasi_hari: Number(formData.estimasi_hari),
-      dibuat_pada: new Date().toISOString()
+      estimasi_hari: Number(formData.estimasi_hari)
     };
 
-    if (editingId) {
-      const updated = layananList.map((item) =>
-        item.id === editingId ? { ...item, ...payload } : item
-      );
-      saveToStorage(updated);
-      setToast({ type: 'success', message: 'Layanan berhasil diperbarui!' });
-    } else {
-      const newItem = {
-        id: 'L' + Math.random().toString(36).substring(2, 8),
-        ...payload
-      };
-      saveToStorage([...layananList, newItem]);
-      setToast({ type: 'success', message: 'Layanan berhasil ditambahkan!' });
+    try {
+      if (isFirebaseConfigured() && db) {
+        if (editingId) {
+          await updateDoc(doc(db, 'layanan', editingId), payload);
+          setToast({ type: 'success', message: 'Layanan berhasil diperbarui di Firestore!' });
+        } else {
+          await addDoc(collection(db, 'layanan'), {
+            ...payload,
+            dibuat_pada: serverTimestamp()
+          });
+          setToast({ type: 'success', message: 'Layanan baru berhasil disimpan ke Firestore!' });
+        }
+        await loadData();
+      } else {
+        // Mode Fallback
+        if (editingId) {
+          const updated = layananList.map((item) =>
+            item.id === editingId ? { ...item, ...payload } : item
+          );
+          setLayananList(updated);
+          localStorage.setItem('cuci_kilat_layanan', JSON.stringify(updated));
+          setToast({ type: 'success', message: 'Layanan berhasil diperbarui!' });
+        } else {
+          const newItem = {
+            id: 'L' + Math.random().toString(36).substring(2, 8),
+            ...payload,
+            dibuat_pada: new Date().toISOString()
+          };
+          const updated = [...layananList, newItem];
+          setLayananList(updated);
+          localStorage.setItem('cuci_kilat_layanan', JSON.stringify(updated));
+          setToast({ type: 'success', message: 'Layanan baru berhasil ditambahkan!' });
+        }
+      }
+      setIsFormOpen(false);
+    } catch (err) {
+      console.error('Error saving layanan:', err);
+      setFormError('Gagal menyimpan data ke Firestore: ' + err.message);
     }
-
-    setIsFormOpen(false);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!deleteDialog.item) return;
-    const filtered = layananList.filter((item) => item.id !== deleteDialog.item.id);
-    saveToStorage(filtered);
-    setToast({ type: 'success', message: `Layanan "${deleteDialog.item.nama}" berhasil dihapus.` });
-    setDeleteDialog({ isOpen: false, item: null });
+    try {
+      if (isFirebaseConfigured() && db) {
+        await deleteDoc(doc(db, 'layanan', deleteDialog.item.id));
+        setToast({ type: 'success', message: `Layanan "${deleteDialog.item.nama}" berhasil dihapus.` });
+        await loadData();
+      } else {
+        const filtered = layananList.filter((item) => item.id !== deleteDialog.item.id);
+        setLayananList(filtered);
+        localStorage.setItem('cuci_kilat_layanan', JSON.stringify(filtered));
+        setToast({ type: 'success', message: `Layanan "${deleteDialog.item.nama}" berhasil dihapus.` });
+      }
+    } catch (err) {
+      console.error('Error deleting layanan:', err);
+      setToast({ type: 'error', message: 'Gagal menghapus layanan: ' + err.message });
+    } finally {
+      setDeleteDialog({ isOpen: false, item: null });
+    }
   };
 
   return (
@@ -231,7 +285,7 @@ export default function LayananPage() {
                 </h3>
                 <div style={{ fontSize: '0.825rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
                   <strong style={{ color: 'var(--primary-dark)', fontSize: '0.95rem' }}>
-                    Rp{item.harga_per_kg.toLocaleString('id-ID')}
+                    Rp{item.harga_per_kg?.toLocaleString('id-ID')}
                   </strong>
                   /kg · ⏱️ {item.estimasi_hari} hari
                 </div>

@@ -1,0 +1,76 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isNonEmptyString(val, maxLen) {
+      return val is string && val.size() > 0 && val.size() <= maxLen;
+    }
+
+    function isInteger(val) {
+      return val is int;
+    }
+
+    // 1. Koleksi Layanan
+    match /layanan/{layananId} {
+      allow read: if true;
+
+      allow create, update: if
+        isNonEmptyString(request.resource.data.nama, 40) &&
+        isInteger(request.resource.data.harga_per_kg) &&
+        request.resource.data.harga_per_kg >= 0 &&
+        isInteger(request.resource.data.estimasi_hari) &&
+        request.resource.data.estimasi_hari >= 1 &&
+        request.resource.data.estimasi_hari <= 7;
+
+      allow delete: if true;
+    }
+
+    // 2. Koleksi Pelanggan
+    match /pelanggan/{noWhatsapp} {
+      allow read: if true;
+
+      allow create, update: if
+        request.resource.data.no_whatsapp == noWhatsapp &&
+        request.resource.data.no_whatsapp is string &&
+        request.resource.data.no_whatsapp.matches('^08[0-9]{8,11}$') &&
+        isNonEmptyString(request.resource.data.nama, 60) &&
+        isNonEmptyString(request.resource.data.alamat, 200);
+
+      allow delete: if true;
+    }
+
+    // 3. Koleksi Order
+    match /order/{orderId} {
+      allow read: if true;
+
+      // Create: status awal wajib 'diterima', berat 1-50, total sesuai rumus
+      allow create: if
+        isInteger(request.resource.data.berat_kg) &&
+        request.resource.data.berat_kg >= 1 &&
+        request.resource.data.berat_kg <= 50 &&
+        isInteger(request.resource.data.harga_per_kg) &&
+        request.resource.data.harga_per_kg >= 0 &&
+        request.resource.data.total == request.resource.data.harga_per_kg * request.resource.data.berat_kg &&
+        request.resource.data.status == 'diterima' &&
+        isNonEmptyString(request.resource.data.pelanggan_id, 30) &&
+        isNonEmptyString(request.resource.data.layanan_id, 40) &&
+        request.resource.data.tanggal_masuk is string;
+
+      // Update: hanya boleh berpindah status mengikuti alur resmi PRD
+      allow update: if
+        request.resource.data.total == resource.data.total &&
+        request.resource.data.berat_kg == resource.data.berat_kg &&
+        request.resource.data.harga_per_kg == resource.data.harga_per_kg &&
+        (
+          (resource.data.status == 'diterima' && (request.resource.data.status == 'dicuci' || request.resource.data.status == 'dibatalkan')) ||
+          (resource.data.status == 'dicuci' && request.resource.data.status == 'selesai') ||
+          (resource.data.status == 'selesai' && request.resource.data.status == 'diambil')
+        );
+
+      // Delete: dilarang menghapus jika status dicuci, selesai, atau diambil
+      allow delete: if resource.data.status == 'diterima' || resource.data.status == 'dibatalkan';
+    }
+  }
+}

@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import StateHandler from '../../components/StateHandler';
 import { initialOrder, getTodayDateString } from '../../lib/mockData';
 import { calculateDailyReport } from '../../lib/businessRules';
+import { db, isFirebaseConfigured } from '../../lib/firebase';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 
 export default function LaporanPage() {
   const [selectedDate, setSelectedDate] = useState(getTodayDateString());
@@ -11,16 +13,27 @@ export default function LaporanPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const loadReportData = () => {
+  const loadReportData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const savedOrders = localStorage.getItem('cuci_kilat_order');
-      const orders = savedOrders ? JSON.parse(savedOrders) : initialOrder;
-      const res = calculateDailyReport(orders, selectedDate);
-      setReport(res);
+      if (isFirebaseConfigured() && db) {
+        // Query order sesuai tanggal_masuk yang dipilih
+        const q = query(collection(db, 'order'), where('tanggal_masuk', '==', selectedDate));
+        const snap = await getDocs(q);
+        const orders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const res = calculateDailyReport(orders, selectedDate);
+        setReport(res);
+      } else {
+        // Mode Fallback
+        const savedOrders = localStorage.getItem('cuci_kilat_order');
+        const orders = savedOrders ? JSON.parse(savedOrders) : initialOrder;
+        const res = calculateDailyReport(orders, selectedDate);
+        setReport(res);
+      }
     } catch (err) {
-      setError('Gagal memuat data laporan harian.');
+      console.error('Error fetching report data:', err);
+      setError('Gagal memuat data laporan harian dari server.');
     } finally {
       setLoading(false);
     }
