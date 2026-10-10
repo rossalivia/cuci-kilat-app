@@ -39,7 +39,6 @@ export default function LayananPage() {
   const [deleteDialog, setDeleteDialog] = useState({ isOpen: false, item: null });
   const [toast, setToast] = useState(null);
 
-  // Load data (Firestore atau localStorage fallback)
   const loadData = async () => {
     setLoading(true);
     setError(null);
@@ -116,24 +115,23 @@ export default function LayananPage() {
       if (isFirebaseConfigured() && db) {
         if (editingId) {
           await updateDoc(doc(db, 'layanan', editingId), payload);
-          setToast({ type: 'success', message: 'Layanan berhasil diperbarui di Firestore!' });
+          setToast({ type: 'success', message: 'Paket layanan berhasil diperbarui!' });
         } else {
           await addDoc(collection(db, 'layanan'), {
             ...payload,
             dibuat_pada: serverTimestamp()
           });
-          setToast({ type: 'success', message: 'Layanan baru berhasil disimpan ke Firestore!' });
+          setToast({ type: 'success', message: 'Paket layanan baru berhasil ditambahkan!' });
         }
         await loadData();
       } else {
-        // Mode Fallback
         if (editingId) {
           const updated = layananList.map((item) =>
             item.id === editingId ? { ...item, ...payload } : item
           );
           setLayananList(updated);
           localStorage.setItem('cuci_kilat_layanan', JSON.stringify(updated));
-          setToast({ type: 'success', message: 'Layanan berhasil diperbarui!' });
+          setToast({ type: 'success', message: 'Paket layanan berhasil diperbarui!' });
         } else {
           const newItem = {
             id: 'L' + Math.random().toString(36).substring(2, 8),
@@ -143,13 +141,13 @@ export default function LayananPage() {
           const updated = [...layananList, newItem];
           setLayananList(updated);
           localStorage.setItem('cuci_kilat_layanan', JSON.stringify(updated));
-          setToast({ type: 'success', message: 'Layanan baru berhasil ditambahkan!' });
+          setToast({ type: 'success', message: 'Paket layanan baru berhasil ditambahkan!' });
         }
       }
       setIsFormOpen(false);
     } catch (err) {
       console.error('Error saving layanan:', err);
-      setFormError('Gagal menyimpan data ke Firestore: ' + err.message);
+      setFormError('Gagal menyimpan layanan: ' + err.message);
     }
   };
 
@@ -178,36 +176,50 @@ export default function LayananPage() {
     <div>
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="page-header-row">
         <div>
-          <h1 className="page-title">🏷️ Jenis Layanan</h1>
-          <p className="page-subtitle">Kelola harga per kg dan estimasi waktu pengerjaan</p>
+          <h1 className="page-title">Paket Layanan Laundry</h1>
+          <p className="page-desc">Kelola jenis cucian, tarif harga per kilogram, dan komitmen durasi pengerjaan</p>
         </div>
         {!isFormOpen && (
           <button
             type="button"
-            className="btn btn-primary btn-sm"
+            className="btn btn-primary"
             onClick={handleOpenAdd}
             data-testid="add-layanan-button"
           >
-            ➕ Tambah
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            Tambah Paket
           </button>
         )}
       </div>
 
       {/* Form Tambah/Ubah */}
       {isFormOpen && (
-        <div className="card" style={{ border: '2px solid var(--primary-light)', marginBottom: '1.25rem' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '0.75rem' }}>
-            {editingId ? '✏️ Ubah Layanan' : '➕ Tambah Layanan Baru'}
-          </h3>
+        <div className="card-clean" style={{ border: '2px solid var(--primary-border)', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: '800' }}>
+              {editingId ? 'Perbarui Paket Layanan' : 'Tambah Paket Layanan Baru'}
+            </h3>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setIsFormOpen(false)}
+            >
+              ✕ Tutup
+            </button>
+          </div>
+
           <form onSubmit={handleSubmit}>
             <div className="form-group">
-              <label className="form-label">Nama Layanan (1-40 Karakter)</label>
+              <label className="form-label">Nama Paket Layanan (1–40 Karakter)</label>
               <input
                 type="text"
                 className="form-input"
-                placeholder="Contoh: Cuci Setrika"
+                placeholder="Contoh: Cuci Setrika / Cuci Kering / Kilat Express"
                 value={formData.nama}
                 onChange={(e) => setFormData({ ...formData, nama: e.target.value })}
                 required
@@ -215,12 +227,12 @@ export default function LayananPage() {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Harga per Kg (Rp, Bulat)</label>
+              <label className="form-label">Tarif per Kilogram (Rupiah Bulat, Minimal 0)</label>
               <input
                 type="number"
                 min="0"
                 step="1"
-                className="form-input"
+                className="form-input num-tabular"
                 placeholder="Contoh: 10000"
                 value={formData.harga_per_kg}
                 onChange={(e) => setFormData({ ...formData, harga_per_kg: e.target.value })}
@@ -229,36 +241,37 @@ export default function LayananPage() {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Estimasi Waktu (1–7 Hari)</label>
+              <label className="form-label">Estimasi Pengerjaan (1–7 Hari)</label>
               <input
                 type="number"
                 min="1"
                 max="7"
                 step="1"
-                className="form-input"
-                placeholder="Contoh: 3"
+                className="form-input num-tabular"
+                placeholder="Contoh: 2"
                 value={formData.estimasi_hari}
                 onChange={(e) => setFormData({ ...formData, estimasi_hari: e.target.value })}
                 required
               />
+              <div className="form-hint">Standar waktu tunggu pelanggan hingga cucian siap diambil.</div>
             </div>
 
             {formError && <div className="form-error" style={{ marginBottom: '0.75rem' }}>⚠️ {formError}</div>}
 
-            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
               <button
                 type="button"
-                className="btn btn-secondary btn-sm"
+                className="btn btn-secondary"
                 onClick={() => setIsFormOpen(false)}
               >
                 Batal
               </button>
               <button
                 type="submit"
-                className="btn btn-primary btn-sm"
+                className="btn btn-primary"
                 data-testid="submit-layanan"
               >
-                Simpan Layanan
+                Simpan Paket
               </button>
             </div>
           </form>
@@ -270,27 +283,31 @@ export default function LayananPage() {
         loading={loading}
         error={error}
         empty={layananList.length === 0}
-        emptyTitle="Belum Ada Layanan"
-        emptyMessage="Daftar layanan masih kosong. Tambahkan jenis layanan pertama Anda."
-        addLabel="Tambah Layanan"
+        emptyTitle="Belum Ada Paket Layanan"
+        emptyMessage="Daftar tarif layanan masih kosong. Buat paket pertama untuk mulai menerima order."
+        addLabel="Tambah Paket"
         onAdd={handleOpenAdd}
         onRetry={loadData}
       >
         <div className="list-container">
           {layananList.map((item) => (
-            <div key={item.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div key={item.id} className="card-clean" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
               <div>
-                <h3 style={{ fontSize: '1rem', fontWeight: '700', color: 'var(--text-main)' }}>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: 'var(--text-primary)' }}>
                   {item.nama}
                 </h3>
-                <div style={{ fontSize: '0.825rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                  <strong style={{ color: 'var(--primary-dark)', fontSize: '0.95rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.25rem' }}>
+                  <span className="num-tabular" style={{ fontSize: '1.15rem', fontWeight: '800', color: 'var(--primary)' }}>
                     Rp{item.harga_per_kg?.toLocaleString('id-ID')}
-                  </strong>
-                  /kg · ⏱️ {item.estimasi_hari} hari
+                    <span style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)' }}>/kg</span>
+                  </span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: '700', background: 'var(--accent-cyan-light)', color: '#0369a1', padding: '0.2rem 0.55rem', borderRadius: '4px' }}>
+                    Estimasi {item.estimasi_hari} Hari
+                  </span>
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: '0.35rem' }}>
+
+              <div style={{ display: 'flex', gap: '0.4rem' }}>
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
@@ -315,7 +332,7 @@ export default function LayananPage() {
       <ConfirmDialog
         isOpen={deleteDialog.isOpen}
         title="Hapus Layanan"
-        message={`Apakah Anda yakin ingin menghapus layanan "${deleteDialog.item?.nama}"? Tindakan ini tidak dapat dibatalkan.`}
+        message={`Apakah Anda yakin ingin menghapus paket layanan "${deleteDialog.item?.nama}"? Transaksi lama tidak akan terpengaruh.`}
         confirmLabel="Hapus Layanan"
         cancelLabel="Batal"
         danger={true}

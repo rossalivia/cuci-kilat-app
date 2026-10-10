@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import StateHandler from '../../components/StateHandler';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import Toast from '../../components/Toast';
+import ReceiptModal from '../../components/ReceiptModal';
 import { initialOrder, initialLayanan, initialPelanggan, getTodayDateString } from '../../lib/mockData';
 import { calculateOrder, canTransitionStatus, canDeleteOrder } from '../../lib/businessRules';
 import { db, isFirebaseConfigured } from '../../lib/firebase';
@@ -25,6 +26,7 @@ export default function OrderPage() {
   const [layananList, setLayananList] = useState([]);
   const [pelangganList, setPelangganList] = useState([]);
   const [activeTab, setActiveTab] = useState('semua');
+  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -36,8 +38,9 @@ export default function OrderPage() {
   const [catatan, setCatatan] = useState('');
   const [formError, setFormError] = useState(null);
 
-  // Dialog & Toast state
+  // Dialog, Receipt Modal, & Toast state
   const [deleteDialog, setDeleteDialog] = useState({ isOpen: false, item: null });
+  const [receiptModal, setReceiptModal] = useState({ isOpen: false, item: null });
   const [toast, setToast] = useState(null);
 
   const loadData = async () => {
@@ -45,12 +48,10 @@ export default function OrderPage() {
     setError(null);
     try {
       if (isFirebaseConfigured() && db) {
-        // Ambil order terbaru dengan limit(20)
         const orderQ = query(collection(db, 'order'), orderBy('dibuat_pada', 'desc'), limit(20));
         const orderSnap = await getDocs(orderQ);
         const orders = orderSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-        // Ambil master layanan & pelanggan untuk form dropdown
         const laySnap = await getDocs(query(collection(db, 'layanan'), orderBy('nama'), limit(20)));
         const layList = laySnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
@@ -61,7 +62,6 @@ export default function OrderPage() {
         setLayananList(layList);
         setPelangganList(pelList);
       } else {
-        // Mode Fallback
         const savedOrders = localStorage.getItem('cuci_kilat_order');
         const savedLayanan = localStorage.getItem('cuci_kilat_layanan');
         const savedPelanggan = localStorage.getItem('cuci_kilat_pelanggan');
@@ -138,7 +138,7 @@ export default function OrderPage() {
           ...payload,
           dibuat_pada: serverTimestamp()
         });
-        setToast({ type: 'success', message: `Order #${docRef.id} berhasil dicatat ke Firestore!` });
+        setToast({ type: 'success', message: `Order #${docRef.id} berhasil dicatat!` });
         await loadData();
       } else {
         const newOrder = {
@@ -167,7 +167,7 @@ export default function OrderPage() {
     try {
       if (isFirebaseConfigured() && db) {
         await updateDoc(doc(db, 'order', order.id), { status: targetStatus });
-        setToast({ type: 'success', message: `Order #${order.id} kini berstatus "${targetStatus}" di Firestore.` });
+        setToast({ type: 'success', message: `Order #${order.id} status diperbarui: ${targetStatus}.` });
         await loadData();
       } else {
         const updated = orderList.map((item) =>
@@ -175,7 +175,7 @@ export default function OrderPage() {
         );
         setOrderList(updated);
         localStorage.setItem('cuci_kilat_order', JSON.stringify(updated));
-        setToast({ type: 'success', message: `Order #${order.id} kini berstatus "${targetStatus}".` });
+        setToast({ type: 'success', message: `Order #${order.id} status diperbarui: ${targetStatus}.` });
       }
     } catch (err) {
       console.error('Error updating order status:', err);
@@ -194,7 +194,7 @@ export default function OrderPage() {
     try {
       if (isFirebaseConfigured() && db) {
         await deleteDoc(doc(db, 'order', deleteDialog.item.id));
-        setToast({ type: 'success', message: `Order #${deleteDialog.item.id} berhasil dihapus dari Firestore.` });
+        setToast({ type: 'success', message: `Order #${deleteDialog.item.id} berhasil dihapus.` });
         await loadData();
       } else {
         const filtered = orderList.filter((item) => item.id !== deleteDialog.item.id);
@@ -211,49 +211,85 @@ export default function OrderPage() {
   };
 
   const statusTabs = [
-    { key: 'semua', label: 'Semua' },
+    { key: 'semua', label: 'Semua Order' },
     { key: 'diterima', label: 'Diterima' },
-    { key: 'dicuci', label: 'Dicuci' },
-    { key: 'selesai', label: 'Selesai' },
-    { key: 'diambil', label: 'Diambil' },
+    { key: 'dicuci', label: 'Sedang Dicuci' },
+    { key: 'selesai', label: 'Siap Diambil' },
+    { key: 'diambil', label: 'Lunas / Selesai' },
     { key: 'dibatalkan', label: 'Dibatalkan' },
   ];
 
   const filteredOrders = orderList.filter((o) => {
-    if (activeTab === 'semua') return true;
-    return o.status === activeTab;
+    const matchesTab = activeTab === 'semua' || o.status === activeTab;
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return matchesTab;
+    const matchesSearch =
+      (o.nama_pelanggan && o.nama_pelanggan.toLowerCase().includes(q)) ||
+      (o.pelanggan_id && o.pelanggan_id.includes(q)) ||
+      (o.id && o.id.toLowerCase().includes(q));
+    return matchesTab && matchesSearch;
   });
+
+  // Helper Stepper Lifecycle
+  const getStepStatus = (orderStatus, stepName) => {
+    const steps = ['diterima', 'dicuci', 'selesai', 'diambil'];
+    if (orderStatus === 'dibatalkan') return 'cancelled';
+    const currentIndex = steps.indexOf(orderStatus);
+    const targetIndex = steps.indexOf(stepName);
+    if (targetIndex < currentIndex) return 'completed';
+    if (targetIndex === currentIndex) return 'current';
+    return 'pending';
+  };
 
   return (
     <div>
       <Toast toast={toast} onClose={() => setToast(null)} />
+      <ReceiptModal
+        isOpen={receiptModal.isOpen}
+        order={receiptModal.item}
+        onClose={() => setReceiptModal({ isOpen: false, item: null })}
+      />
 
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="page-header-row">
         <div>
-          <h1 className="page-title">🧺 Daftar Order Cucian</h1>
-          <p className="page-subtitle">Pencatatan cucian masuk, timbangan, dan alur status</p>
+          <h1 className="page-title">Pencatatan Order Cucian</h1>
+          <p className="page-desc">Kelola timbangan masuk, alur status pengerjaan, dan nota digital</p>
         </div>
         {!isFormOpen && (
           <button
             type="button"
-            className="btn btn-primary btn-sm"
+            className="btn btn-primary"
             onClick={handleOpenAdd}
             data-testid="add-order-button"
           >
-            ➕ Order Baru
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            Catat Order Baru
           </button>
         )}
       </div>
 
       {/* Form Tambah Order */}
       {isFormOpen && (
-        <div className="card" style={{ border: '2px solid var(--primary-light)', marginBottom: '1.25rem' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '0.75rem' }}>
-            ➕ Catat Order Cucian Baru
-          </h3>
+        <div className="card-clean" style={{ border: '2px solid var(--primary-border)', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: '800' }}>
+              Formulir Penerimaan Cucian Baru
+            </h3>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setIsFormOpen(false)}
+            >
+              ✕ Tutup
+            </button>
+          </div>
+
           <form onSubmit={handleSubmit}>
             <div className="form-group">
-              <label className="form-label">Pilih Pelanggan</label>
+              <label className="form-label">Pilih Pelanggan / Nomor WhatsApp</label>
               <select
                 className="form-select"
                 value={selectedPelangganId}
@@ -263,14 +299,14 @@ export default function OrderPage() {
                 {pelangganList.length === 0 && <option value="">(Belum ada data pelanggan)</option>}
                 {pelangganList.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.nama} ({p.no_whatsapp})
+                    {p.nama} — {p.no_whatsapp} ({p.alamat?.substring(0, 30)}...)
                   </option>
                 ))}
               </select>
             </div>
 
             <div className="form-group">
-              <label className="form-label">Pilih Jenis Layanan</label>
+              <label className="form-label">Pilih Paket Layanan</label>
               <select
                 className="form-select"
                 value={selectedLayananId}
@@ -280,39 +316,58 @@ export default function OrderPage() {
                 {layananList.length === 0 && <option value="">(Belum ada layanan)</option>}
                 {layananList.map((l) => (
                   <option key={l.id} value={l.id}>
-                    {l.nama} - Rp{l.harga_per_kg?.toLocaleString('id-ID')}/kg ({l.estimasi_hari} hari)
+                    {l.nama} — Rp{l.harga_per_kg?.toLocaleString('id-ID')}/kg (Estimasi {l.estimasi_hari} hari)
                   </option>
                 ))}
               </select>
             </div>
 
             <div className="form-group">
-              <label className="form-label">Berat Timbangan (Kg, 1–50)</label>
+              <label className="form-label">Berat Timbangan (Kg, 1–50 kg)</label>
               <input
                 type="number"
                 step="0.1"
                 min="0.1"
                 max="50"
-                className="form-input"
-                placeholder="Misal: 3.2 (dibulatkan ke 4 kg)"
+                className="form-input num-tabular"
+                placeholder="Ketik berat (misal: 3.2)"
                 value={inputBerat}
                 onChange={(e) => setInputBerat(e.target.value)}
                 required
               />
+
+              {/* Quick Preset Buttons */}
+              <div className="preset-chips">
+                <span style={{ fontSize: '0.725rem', color: 'var(--text-secondary)', alignSelf: 'center', fontWeight: '600' }}>
+                  Pilihan Cepat:
+                </span>
+                {[2, 3, 4, 5, 7, 10].map((kg) => (
+                  <button
+                    key={kg}
+                    type="button"
+                    className="chip-btn"
+                    onClick={() => setInputBerat(String(kg))}
+                  >
+                    +{kg} kg
+                  </button>
+                ))}
+              </div>
+
               {calcResult?.isValid && (
-                <div style={{ marginTop: '0.4rem', padding: '0.5rem', background: 'var(--primary-light)', borderRadius: 'var(--radius-sm)', fontSize: '0.825rem' }}>
-                  ⚖️ Berat Dibulatkan: <strong>{calcResult.berat_kg} kg</strong> | Total Biaya: <strong style={{ color: 'var(--primary-dark)', fontSize: '0.95rem' }}>Rp{calcResult.total.toLocaleString('id-ID')}</strong>
+                <div style={{ marginTop: '0.65rem', padding: '0.65rem 0.85rem', background: 'var(--primary-light)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--primary-border)', fontSize: '0.85rem' }}>
+                  ⚖️ Pembulatan Sistem: <strong>{calcResult.berat_kg} kg</strong> &nbsp;|&nbsp;
+                  Total Tagihan: <strong className="num-tabular" style={{ color: 'var(--primary-text)', fontSize: '1.05rem' }}>Rp{calcResult.total.toLocaleString('id-ID')}</strong>
                 </div>
               )}
             </div>
 
             <div className="form-group">
-              <label className="form-label">Catatan Khusus (Maks 100 Karakter)</label>
+              <label className="form-label">Catatan Pengerjaan (Maks 100 Karakter)</label>
               <input
                 type="text"
                 maxLength={100}
                 className="form-input"
-                placeholder="Contoh: Jangan pakai pewangi / Baju putih dipisah"
+                placeholder="Misal: Jangan pakai softener / pisahkan kemeja putih"
                 value={catatan}
                 onChange={(e) => setCatatan(e.target.value)}
               />
@@ -320,27 +375,39 @@ export default function OrderPage() {
 
             {formError && <div className="form-error" style={{ marginBottom: '0.75rem' }}>⚠️ {formError}</div>}
 
-            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
               <button
                 type="button"
-                className="btn btn-secondary btn-sm"
+                className="btn btn-secondary"
                 onClick={() => setIsFormOpen(false)}
               >
                 Batal
               </button>
               <button
                 type="submit"
-                className="btn btn-primary btn-sm"
+                className="btn btn-primary"
                 data-testid="submit-order"
               >
-                Simpan Order
+                Simpan & Terbitkan Nota
               </button>
             </div>
           </form>
         </div>
       )}
 
-      {/* Tabs Filter Status */}
+      {/* Search Bar & Tabs */}
+      {!isFormOpen && (
+        <div style={{ marginBottom: '0.75rem' }}>
+          <input
+            type="text"
+            className="form-input"
+            placeholder="Cari order berdasarkan nama pelanggan, no WA, atau ID nota..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+      )}
+
       <div className="tabs-scroll">
         {statusTabs.map((tab) => (
           <button
@@ -354,59 +421,104 @@ export default function OrderPage() {
         ))}
       </div>
 
-      {/* 3-State Handler & List Order */}
+      {/* List Order */}
       <StateHandler
         loading={loading}
         error={error}
         empty={orderList.length === 0}
-        emptyTitle="Belum Ada Order Cucian"
-        emptyMessage="Belum ada transaksi cucian yang tercatat. Buat order pertama sekarang."
+        emptyTitle="Belum Ada Transaksi Order"
+        emptyMessage="Sistem belum mencatat transaksi cucian. Buat order pertama untuk memulai."
         addLabel="Catat Order Baru"
         onAdd={handleOpenAdd}
         onRetry={loadData}
       >
         {filteredOrders.length === 0 ? (
-          <div className="state-box" style={{ padding: '1.5rem' }}>
+          <div className="state-box">
+            <h3 className="state-title">Order Tidak Ditemukan</h3>
             <p className="state-desc" style={{ marginBottom: 0 }}>
-              Tidak ada order cucian dengan status &quot;{activeTab}&quot;.
+              Tidak ada data order yang cocok dengan filter atau kata kunci pencarian.
             </p>
           </div>
         ) : (
           <div className="list-container">
             {filteredOrders.map((item) => (
-              <div key={item.id} className="card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.4rem' }}>
+              <div key={item.id} className="card-clean">
+                {/* Header Kartu */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
                   <div>
-                    <span style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)' }}>
-                      #{item.id} · {item.tanggal_masuk}
-                    </span>
-                    <h3 style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-main)', marginTop: '0.1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                      <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', fontWeight: '700', color: 'var(--text-secondary)' }}>
+                        #{item.id}
+                      </span>
+                      <span style={{ fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>•</span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }} className="num-tabular">
+                        {item.tanggal_masuk}
+                      </span>
+                    </div>
+                    <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: 'var(--text-primary)', marginTop: '0.2rem' }}>
                       {item.nama_pelanggan}
                     </h3>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      📱 {item.pelanggan_id}
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.1rem' }} className="num-tabular">
+                      WhatsApp: {item.pelanggan_id}
                     </div>
                   </div>
+
                   <span className={`badge badge-${item.status}`}>
                     {item.status}
                   </span>
                 </div>
 
-                <div style={{ background: '#f8fafc', padding: '0.5rem 0.65rem', borderRadius: 'var(--radius-sm)', marginBottom: '0.65rem', fontSize: '0.825rem' }}>
-                  <div>🧺 <strong>{item.nama_layanan}</strong> ({item.berat_kg} kg × Rp{item.harga_per_kg?.toLocaleString('id-ID')})</div>
-                  <div style={{ marginTop: '0.15rem' }}>
-                    💰 Total Tagihan: <strong style={{ color: 'var(--primary-dark)', fontSize: '0.95rem' }}>Rp{item.total?.toLocaleString('id-ID')}</strong>
+                {/* Stepper Timeline Visual */}
+                {item.status !== 'dibatalkan' && (
+                  <div className="timeline-track">
+                    <div className="timeline-line"></div>
+                    {['diterima', 'dicuci', 'selesai', 'diambil'].map((step, idx) => {
+                      const state = getStepStatus(item.status, step);
+                      return (
+                        <div key={step} className={`timeline-step ${state}`}>
+                          <div className="timeline-dot">
+                            {state === 'completed' ? '✓' : idx + 1}
+                          </div>
+                          <span className="timeline-label">{step}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Rincian Cucian */}
+                <div style={{ background: 'var(--brand-card-subtle)', padding: '0.65rem 0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--brand-border)', margin: '0.65rem 0', fontSize: '0.825rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <strong>{item.nama_layanan}</strong>
+                      <span style={{ color: 'var(--text-secondary)', marginLeft: '0.4rem' }}>
+                        ({item.berat_kg} kg × Rp{item.harga_per_kg?.toLocaleString('id-ID')})
+                      </span>
+                    </div>
+                    <div className="num-tabular" style={{ fontWeight: '800', fontSize: '1rem', color: 'var(--primary)' }}>
+                      Rp{item.total?.toLocaleString('id-ID')}
+                    </div>
                   </div>
                   {item.catatan && (
-                    <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '0.2rem' }}>
-                      📝 &quot;{item.catatan}&quot;
+                    <div style={{ color: 'var(--text-secondary)', fontStyle: 'italic', marginTop: '0.35rem', fontSize: '0.775rem' }}>
+                      Catatan: &quot;{item.catatan}&quot;
                     </div>
                   )}
                 </div>
 
-                {/* Tombol Alur Transisi Status & Hapus */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem' }}>
-                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                {/* Action Buttons Row */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.65rem' }}>
+                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    {/* Tombol Cetak Struk */}
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => setReceiptModal({ isOpen: true, item })}
+                    >
+                      🧾 Lihat Nota
+                    </button>
+
+                    {/* Alur Status */}
                     {item.status === 'diterima' && (
                       <>
                         <button
@@ -414,14 +526,14 @@ export default function OrderPage() {
                           className="btn btn-primary btn-sm"
                           onClick={() => triggerStatusChange(item, 'dicuci')}
                         >
-                          🧺 Mulai Cuci
+                          Mulai Cuci
                         </button>
                         <button
                           type="button"
                           className="btn btn-secondary btn-sm"
                           onClick={() => triggerStatusChange(item, 'dibatalkan')}
                         >
-                          ❌ Batalkan
+                          Batalkan
                         </button>
                       </>
                     )}
@@ -432,29 +544,22 @@ export default function OrderPage() {
                         className="btn btn-primary btn-sm"
                         onClick={() => triggerStatusChange(item, 'selesai')}
                       >
-                        ✨ Selesai Cuci
+                        Selesai Cuci
                       </button>
                     )}
 
                     {item.status === 'selesai' && (
                       <button
                         type="button"
-                        className="btn btn-primary btn-sm"
-                        style={{ backgroundColor: 'var(--success)' }}
+                        className="btn btn-success btn-sm"
                         onClick={() => triggerStatusChange(item, 'diambil')}
                       >
-                        💵 Diambil & Bayar
+                        Serahkan & Bayar
                       </button>
-                    )}
-
-                    {(item.status === 'diambil' || item.status === 'dibatalkan') && (
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic', padding: '0.25rem 0' }}>
-                        {item.status === 'diambil' ? '✓ Transaksi selesai & lunas' : '• Order dibatalkan'}
-                      </span>
                     )}
                   </div>
 
-                  {/* Tombol Hapus hanya jika diterima atau dibatalkan */}
+                  {/* Tombol Hapus (Hanya untuk diterima atau dibatalkan) */}
                   {canDeleteOrder(item.status) && (
                     <button
                       type="button"

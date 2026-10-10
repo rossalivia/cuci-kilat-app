@@ -109,7 +109,6 @@ export default function PelangganPage() {
         const docRef = doc(db, 'pelanggan', cleanWa);
 
         if (!editingId) {
-          // Periksa dokumen dengan getDoc sesuai Skema Bagian 4
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
             setFormError('Nomor WhatsApp sudah terdaftar.');
@@ -121,17 +120,16 @@ export default function PelangganPage() {
             alamat: formData.alamat.trim(),
             dibuat_pada: serverTimestamp()
           });
-          setToast({ type: 'success', message: 'Pelanggan baru berhasil didaftarkan ke Firestore!' });
+          setToast({ type: 'success', message: 'Pelanggan baru berhasil didaftarkan!' });
         } else {
           await updateDoc(docRef, {
             nama: formData.nama.trim(),
             alamat: formData.alamat.trim()
           });
-          setToast({ type: 'success', message: 'Data pelanggan berhasil diperbarui di Firestore!' });
+          setToast({ type: 'success', message: 'Data pelanggan berhasil diperbarui!' });
         }
         await loadData();
       } else {
-        // Fallback LocalStorage
         if (!editingId) {
           const isDuplicate = pelangganList.some((p) => p.no_whatsapp === cleanWa);
           if (isDuplicate) {
@@ -188,7 +186,6 @@ export default function PelangganPage() {
     }
   };
 
-  // Filter pencarian berdasarkan nama atau nomor WhatsApp
   const filteredPelanggan = pelangganList.filter((p) => {
     const q = searchQuery.toLowerCase().trim();
     if (!q) return true;
@@ -202,19 +199,23 @@ export default function PelangganPage() {
     <div>
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="page-header-row">
         <div>
-          <h1 className="page-title">👥 Data Pelanggan</h1>
-          <p className="page-subtitle">Kelola kontak member dan nomor WhatsApp</p>
+          <h1 className="page-title">Direktori Pelanggan</h1>
+          <p className="page-desc">Database kontak member laundry dan riwayat nomor WhatsApp</p>
         </div>
         {!isFormOpen && (
           <button
             type="button"
-            className="btn btn-primary btn-sm"
+            className="btn btn-primary"
             onClick={handleOpenAdd}
             data-testid="add-pelanggan-button"
           >
-            ➕ Tambah
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            Tambah Pelanggan
           </button>
         )}
       </div>
@@ -225,7 +226,7 @@ export default function PelangganPage() {
           <input
             type="text"
             className="form-input"
-            placeholder="🔍 Cari nama atau nomor WhatsApp..."
+            placeholder="Ketik nama atau nomor WhatsApp untuk mencari..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -234,13 +235,23 @@ export default function PelangganPage() {
 
       {/* Form Tambah/Ubah */}
       {isFormOpen && (
-        <div className="card" style={{ border: '2px solid var(--primary-light)', marginBottom: '1.25rem' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '0.75rem' }}>
-            {editingId ? '✏️ Ubah Data Pelanggan' : '➕ Tambah Pelanggan Baru'}
-          </h3>
+        <div className="card-clean" style={{ border: '2px solid var(--primary-border)', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: '800' }}>
+              {editingId ? 'Perbarui Data Pelanggan' : 'Registrasi Pelanggan Baru'}
+            </h3>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setIsFormOpen(false)}
+            >
+              ✕ Tutup
+            </button>
+          </div>
+
           <form onSubmit={handleSubmit}>
             <div className="form-group">
-              <label className="form-label">Nama Pelanggan (1–60 Karakter)</label>
+              <label className="form-label">Nama Lengkap Pelanggan (1–60 Karakter)</label>
               <input
                 type="text"
                 className="form-input"
@@ -255,15 +266,17 @@ export default function PelangganPage() {
               <label className="form-label">Nomor WhatsApp (Diawali 08, 10–13 Angka)</label>
               <input
                 type="tel"
-                className="form-input"
+                className="form-input num-tabular"
                 placeholder="Contoh: 081298765432"
                 value={formData.no_whatsapp}
                 onChange={(e) => setFormData({ ...formData, no_whatsapp: e.target.value })}
-                disabled={!!editingId} // Nomor WA merupakan ID dokumen
+                disabled={!!editingId}
                 required
               />
-              {editingId && (
-                <div className="form-hint">Nomor WhatsApp berfungsi sebagai ID unik dan tidak dapat diubah.</div>
+              {editingId ? (
+                <div className="form-hint">Nomor WhatsApp merupakan ID unik dokumen dan tidak dapat diubah.</div>
+              ) : (
+                <div className="form-hint">Format nomor WhatsApp Indonesia diawali 08 (misal: 0812xxxxxxxx).</div>
               )}
             </div>
 
@@ -280,17 +293,17 @@ export default function PelangganPage() {
 
             {formError && <div className="form-error" style={{ marginBottom: '0.75rem' }}>⚠️ {formError}</div>}
 
-            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
               <button
                 type="button"
-                className="btn btn-secondary btn-sm"
+                className="btn btn-secondary"
                 onClick={() => setIsFormOpen(false)}
               >
                 Batal
               </button>
               <button
                 type="submit"
-                className="btn btn-primary btn-sm"
+                className="btn btn-primary"
                 data-testid="submit-pelanggan"
               >
                 Simpan Pelanggan
@@ -305,53 +318,71 @@ export default function PelangganPage() {
         loading={loading}
         error={error}
         empty={pelangganList.length === 0}
-        emptyTitle="Belum Ada Pelanggan"
-        emptyMessage="Daftar pelanggan masih kosong. Tambahkan pelanggan pertama untuk membuat order."
+        emptyTitle="Belum Ada Pelanggan Terdaftar"
+        emptyMessage="Database pelanggan masih kosong. Daftarkan pelanggan pertama untuk membuat order."
         addLabel="Tambah Pelanggan"
         onAdd={handleOpenAdd}
         onRetry={loadData}
       >
         {filteredPelanggan.length === 0 ? (
-          <div className="state-box" style={{ padding: '1.5rem' }}>
+          <div className="state-box">
+            <h3 className="state-title">Pelanggan Tidak Ditemukan</h3>
             <p className="state-desc" style={{ marginBottom: 0 }}>
-              Tidak ditemukan pelanggan dengan kata kunci &quot;{searchQuery}&quot;.
+              Tidak ditemukan data yang sesuai dengan kata kunci pencarian &quot;{searchQuery}&quot;.
             </p>
           </div>
         ) : (
           <div className="list-container">
-            {filteredPelanggan.map((item) => (
-              <div key={item.id} className="card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <h3 style={{ fontSize: '1rem', fontWeight: '700', color: 'var(--text-main)' }}>
-                      {item.nama}
-                    </h3>
-                    <div style={{ fontSize: '0.85rem', color: 'var(--primary)', fontWeight: '600', marginTop: '0.15rem' }}>
-                      📱 {item.no_whatsapp}
+            {filteredPelanggan.map((item) => {
+              const cleanPhone = item.no_whatsapp?.startsWith('0')
+                ? '62' + item.no_whatsapp.slice(1)
+                : item.no_whatsapp;
+
+              return (
+                <div key={item.id} className="card-clean">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
+                    <div>
+                      <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: 'var(--text-primary)' }}>
+                        {item.nama}
+                      </h3>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
+                        <span className="num-tabular" style={{ fontSize: '0.875rem', fontWeight: '700', color: 'var(--primary)' }}>
+                          {item.no_whatsapp}
+                        </span>
+                        <a
+                          href={`https://wa.me/${cleanPhone}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ fontSize: '0.725rem', color: '#16a34a', textDecoration: 'none', fontWeight: '700', background: '#dcfce7', padding: '0.15rem 0.45rem', borderRadius: '4px' }}
+                        >
+                          Chat WA ↗
+                        </a>
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.35rem', lineHeight: '1.4' }}>
+                        Alamat: {item.alamat}
+                      </div>
                     </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
-                      📍 {item.alamat}
+
+                    <div style={{ display: 'flex', gap: '0.4rem' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => handleOpenEdit(item)}
+                      >
+                        Ubah
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-sm"
+                        onClick={() => setDeleteDialog({ isOpen: true, item })}
+                      >
+                        Hapus
+                      </button>
                     </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.35rem' }}>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => handleOpenEdit(item)}
-                    >
-                      Ubah
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-danger btn-sm"
-                      onClick={() => setDeleteDialog({ isOpen: true, item })}
-                    >
-                      Hapus
-                    </button>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </StateHandler>
@@ -360,7 +391,7 @@ export default function PelangganPage() {
       <ConfirmDialog
         isOpen={deleteDialog.isOpen}
         title="Hapus Pelanggan"
-        message={`Apakah Anda yakin ingin menghapus pelanggan "${deleteDialog.item?.nama}" (${deleteDialog.item?.no_whatsapp})?`}
+        message={`Apakah Anda yakin ingin menghapus pelanggan "${deleteDialog.item?.nama}" (${deleteDialog.item?.no_whatsapp})? Data yang sudah dihapus tidak dapat dipulihkan.`}
         confirmLabel="Hapus Pelanggan"
         cancelLabel="Batal"
         danger={true}

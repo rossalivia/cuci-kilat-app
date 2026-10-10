@@ -2,8 +2,8 @@ import '../styles/globals.css';
 import Navbar from '../components/Navbar';
 
 export const metadata = {
-  title: 'Cuci Kilat - Laundry Kiloan',
-  description: 'Aplikasi manajemen laundry kiloan: layanan, pelanggan, order, dan laporan harian',
+  title: 'Cuci Kilat - Sistem Manajemen Laundry Kiloan',
+  description: 'Aplikasi kasir dan manajemen operasional laundry kiloan: layanan, pelanggan, order, dan laporan keuangan',
 };
 
 export const viewport = {
@@ -16,14 +16,24 @@ export default function RootLayout({ children }) {
   return (
     <html lang="id">
       <body>
-        <div className="navbar-top">
+        <header className="navbar-top no-print">
           <div className="navbar-inner">
-            <a href="/order" className="brand">
-              🧺 Cuci Kilat
-              <span className="brand-badge">Sari Laundry</span>
+            <a href="/order" className="brand-wrapper">
+              <div className="brand-icon">
+                CK
+              </div>
+              <div className="brand-info">
+                <span className="brand-title">CUCI KILAT</span>
+                <span className="brand-subtitle">Laundry Kiloan · Sari</span>
+              </div>
             </a>
+
+            <div className="system-status-pill">
+              <span className="status-dot"></span>
+              <span>Firestore Active</span>
+            </div>
           </div>
-        </div>
+        </header>
 
         <main className="app-container">
           {children}

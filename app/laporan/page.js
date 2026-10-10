@@ -18,14 +18,12 @@ export default function LaporanPage() {
     setError(null);
     try {
       if (isFirebaseConfigured() && db) {
-        // Query order sesuai tanggal_masuk yang dipilih
         const q = query(collection(db, 'order'), where('tanggal_masuk', '==', selectedDate));
         const snap = await getDocs(q);
         const orders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         const res = calculateDailyReport(orders, selectedDate);
         setReport(res);
       } else {
-        // Mode Fallback
         const savedOrders = localStorage.getItem('cuci_kilat_order');
         const orders = savedOrders ? JSON.parse(savedOrders) : initialOrder;
         const res = calculateDailyReport(orders, selectedDate);
@@ -43,20 +41,33 @@ export default function LaporanPage() {
     loadReportData();
   }, [selectedDate]);
 
+  const handlePrintReport = () => {
+    window.print();
+  };
+
   return (
     <div>
-      <div className="page-header">
-        <h1 className="page-title">📊 Laporan Harian</h1>
-        <p className="page-subtitle">Ringkasan pendapatan kasir, beban cucian, dan rincian layanan</p>
+      <div className="page-header-row">
+        <div>
+          <h1 className="page-title">Laporan Keuangan & Beban Harian</h1>
+          <p className="page-desc">Rekapitulasi pendapatan kasir lunas, total timbangan, dan rincian per paket layanan</p>
+        </div>
+        <button
+          type="button"
+          className="btn btn-secondary no-print"
+          onClick={handlePrintReport}
+        >
+          🖨️ Cetak Laporan
+        </button>
       </div>
 
       {/* Date Filter */}
-      <div className="card" style={{ marginBottom: '1.25rem' }}>
+      <div className="card-clean no-print" style={{ marginBottom: '1.25rem' }}>
         <div className="form-group" style={{ marginBottom: 0 }}>
-          <label className="form-label">📅 Pilih Tanggal Laporan</label>
+          <label className="form-label">Pilih Tanggal Transaksi</label>
           <input
             type="date"
-            className="form-input"
+            className="form-input num-tabular"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
           />
@@ -68,63 +79,81 @@ export default function LaporanPage() {
         loading={loading}
         error={error}
         empty={!report || report.total_order === 0}
-        emptyTitle={`Belum Ada Order pada ${selectedDate}`}
-        emptyMessage="Tidak ada transaksi cucian yang tercatat pada tanggal yang dipilih. Ubah tanggal atau buat order baru."
+        emptyTitle={`Belum Ada Transaksi pada ${selectedDate}`}
+        emptyMessage="Tidak ada aktivitas cucian tercatat pada tanggal yang dipilih. Ubah tanggal atau input order baru."
         onRetry={loadReportData}
       >
         {report && (
           <div>
             {/* Metric Cards Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.65rem', marginBottom: '1.25rem' }}>
-              <div className="card" style={{ textAlign: 'center', padding: '0.85rem 0.5rem', marginBottom: 0 }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '600' }}>Order Aktif</div>
-                <div style={{ fontSize: '1.4rem', fontWeight: '800', color: 'var(--primary)', marginTop: '0.2rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+              <div className="card-clean" style={{ marginBottom: 0 }}>
+                <div style={{ fontSize: '0.775rem', color: 'var(--text-secondary)', fontWeight: '700' }}>
+                  JUMLAH ORDER AKTIF
+                </div>
+                <div className="num-tabular" style={{ fontSize: '1.75rem', fontWeight: '800', color: 'var(--primary)', marginTop: '0.2rem' }}>
                   {report.total_order}
                 </div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>transaksi</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.15rem' }}>
+                  transaksi non-batal
+                </div>
               </div>
 
-              <div className="card" style={{ textAlign: 'center', padding: '0.85rem 0.5rem', marginBottom: 0 }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '600' }}>Total Beban</div>
-                <div style={{ fontSize: '1.4rem', fontWeight: '800', color: 'var(--warning)', marginTop: '0.2rem' }}>
-                  {report.total_berat_kg}
+              <div className="card-clean" style={{ marginBottom: 0 }}>
+                <div style={{ fontSize: '0.775rem', color: 'var(--text-secondary)', fontWeight: '700' }}>
+                  TOTAL BEBAN CUCIAN
                 </div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>kilogram</div>
+                <div className="num-tabular" style={{ fontSize: '1.75rem', fontWeight: '800', color: '#d97706', marginTop: '0.2rem' }}>
+                  {report.total_berat_kg} <span style={{ fontSize: '1rem', fontWeight: '700' }}>kg</span>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.15rem' }}>
+                  volume timbangan masuk
+                </div>
               </div>
 
-              <div className="card" style={{ textAlign: 'center', padding: '0.85rem 0.5rem', marginBottom: 0 }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '600' }}>Pendapatan</div>
-                <div style={{ fontSize: '1.2rem', fontWeight: '800', color: 'var(--success)', marginTop: '0.2rem' }}>
-                  Rp{report.total_pendapatan.toLocaleString('id-ID')}
+              <div className="card-clean" style={{ marginBottom: 0 }}>
+                <div style={{ fontSize: '0.775rem', color: 'var(--text-secondary)', fontWeight: '700' }}>
+                  TOTAL PENDAPATAN LUNAS
                 </div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>status diambil</div>
+                <div className="num-tabular" style={{ fontSize: '1.5rem', fontWeight: '800', color: '#16a34a', marginTop: '0.2rem' }}>
+                  Rp{report.total_pendapatan?.toLocaleString('id-ID')}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.15rem' }}>
+                  khusus order status &quot;diambil&quot;
+                </div>
               </div>
             </div>
 
             {/* Rincian per Jenis Layanan */}
-            <div className="card">
-              <h3 style={{ fontSize: '0.95rem', fontWeight: '700', marginBottom: '0.75rem', color: 'var(--text-main)' }}>
-                📋 Rincian Beban per Layanan
+            <div className="card-clean">
+              <h3 style={{ fontSize: '1.05rem', fontWeight: '800', marginBottom: '1rem', color: 'var(--text-primary)' }}>
+                Distribusi & Rincian per Paket Layanan
               </h3>
 
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.825rem' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                   <thead>
-                    <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left', color: 'var(--text-muted)' }}>
-                      <th style={{ padding: '0.5rem 0.25rem' }}>Layanan</th>
-                      <th style={{ padding: '0.5rem 0.25rem', textAlign: 'center' }}>Order</th>
-                      <th style={{ padding: '0.5rem 0.25rem', textAlign: 'center' }}>Total Kg</th>
-                      <th style={{ padding: '0.5rem 0.25rem', textAlign: 'right' }}>Pendapatan Lunas</th>
+                    <tr style={{ borderBottom: '2px solid var(--brand-border)', textAlign: 'left', color: 'var(--text-secondary)' }}>
+                      <th style={{ padding: '0.65rem 0.5rem', fontWeight: '700' }}>Nama Paket Layanan</th>
+                      <th style={{ padding: '0.65rem 0.5rem', textAlign: 'center', fontWeight: '700' }}>Banyak Order</th>
+                      <th style={{ padding: '0.65rem 0.5rem', textAlign: 'center', fontWeight: '700' }}>Total Timbangan</th>
+                      <th style={{ padding: '0.65rem 0.5rem', textAlign: 'right', fontWeight: '700' }}>Omzet Lunas</th>
                     </tr>
                   </thead>
                   <tbody>
                     {report.rincian.map((item) => (
-                      <tr key={item.nama_layanan} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '0.6rem 0.25rem', fontWeight: '600' }}>{item.nama_layanan}</td>
-                        <td style={{ padding: '0.6rem 0.25rem', textAlign: 'center' }}>{item.total_order}</td>
-                        <td style={{ padding: '0.6rem 0.25rem', textAlign: 'center' }}>{item.total_kg} kg</td>
-                        <td style={{ padding: '0.6rem 0.25rem', textAlign: 'right', fontWeight: '700', color: 'var(--success)' }}>
-                          Rp{item.pendapatan.toLocaleString('id-ID')}
+                      <tr key={item.nama_layanan} style={{ borderBottom: '1px solid var(--brand-border)' }}>
+                        <td style={{ padding: '0.75rem 0.5rem', fontWeight: '700' }}>
+                          {item.nama_layanan}
+                        </td>
+                        <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }} className="num-tabular">
+                          {item.total_order}
+                        </td>
+                        <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }} className="num-tabular">
+                          <strong>{item.total_kg}</strong> kg
+                        </td>
+                        <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right', fontWeight: '800', color: '#16a34a' }} className="num-tabular">
+                          Rp{item.pendapatan?.toLocaleString('id-ID')}
                         </td>
                       </tr>
                     ))}
@@ -132,8 +161,8 @@ export default function LaporanPage() {
                 </table>
               </div>
 
-              <div style={{ marginTop: '0.75rem', padding: '0.5rem', background: '#f8fafc', borderRadius: 'var(--radius-sm)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                ℹ️ <em>Catatan:</em> Pendapatan hanya dihitung dari order yang telah diambil dan dibayar pelanggan (status <strong>diambil</strong>). Order yang dibatalkan tidak dimasukkan dalam perhitungan.
+              <div style={{ marginTop: '1rem', padding: '0.65rem 0.85rem', background: 'var(--brand-card-subtle)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--brand-border)', fontSize: '0.775rem', color: 'var(--text-secondary)' }}>
+                <strong>Kebijakan Akuntansi Kasir:</strong> Pendapatan harian dihitung murni dari order yang uangnya telah diselesaikan saat penyerahan cucian (status <strong>diambil</strong>). Order yang berstatus <strong>dibatalkan</strong> dikeluarkan dari kalkulasi total transaksi maupun volume timbangan.
               </div>
             </div>
           </div>
